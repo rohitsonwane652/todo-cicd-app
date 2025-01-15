@@ -2,23 +2,19 @@ pipeline {
     agent any
 
     environment {
-        JAVA_HOME = '/usr/lib/jvm/java-17-openjdk'
-        PATH = "$JAVA_HOME/bin:$PATH"
-        DOCKER_IMAGE = 'roh652/springboot-app:latest'  // Update with your DockerHub username
+        DOCKER_IMAGE = 'roh652/springboot-app:latest'
     }
 
     stages {
         stage('Checkout') {
             steps {
-                // Checkout code from GitHub
-                checkout main
+                checkout scm
             }
         }
 
         stage('Build') {
             steps {
                 script {
-                    // Build the Spring Boot application with Maven
                     sh 'mvn clean install -DskipTests'
                 }
             }
@@ -27,47 +23,34 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    // Build Docker image for the Spring Boot application
-                    sh '''
-                    docker build -t $DOCKER_IMAGE .
-                    '''
+                    sh "docker build -t $DOCKER_IMAGE ."
                 }
             }
         }
 
-        stage('Push to DockerHub') {
+        stage('Push Docker Image to DockerHub') {
             steps {
                 script {
-                    // Login to DockerHub (you should store your credentials in Jenkins)
-                    withDockerRegistry(credentialsId: 'roh652, url: '') {
-                        sh '''
-                        docker push $DOCKER_IMAGE
-                        '''
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
+                        // Log in to DockerHub with the credentials
+                        sh 'docker login -u $DOCKER_USERNAME -p $DOCKER_PASSWORD'
+                        // Push the Docker image to DockerHub
+                        sh "docker push $DOCKER_IMAGE"
                     }
                 }
             }
         }
 
-        stage('Deploy with Docker') {
+        stage('Deploy Docker Container') {
             steps {
                 script {
-                    // Stop and remove any existing container
-                    sh 'docker ps -q -f name=springboot-app | xargs -r docker stop'
-                    sh 'docker ps -a -q -f name=springboot-app | xargs -r docker rm'
-
-                    // Run the new container
                     sh '''
-                    docker run -d -p 8000:8000 --name springboot-app $DOCKER_IMAGE
+                    docker stop springboot-app || true
+                    docker rm springboot-app || true
+                    docker run -d -p 8081:8080 --name springboot-app $DOCKER_IMAGE
                     '''
                 }
             }
-        }
-    }
-
-    post {
-        always {
-            echo 'Cleaning up...'
-            // You can add steps to clean up old Docker images, containers, etc.
         }
     }
 }
